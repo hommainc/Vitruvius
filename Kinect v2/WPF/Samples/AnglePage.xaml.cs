@@ -1,21 +1,11 @@
 ﻿using LightBuzz.Vitruvius;
 using Microsoft.Kinect;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
-using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
-using System.Windows.Shapes;
+using uPLibrary.Networking.M2Mqtt;
 
-namespace Samples
+namespace LightBuzz.Vituvius.Samples.WPF
 {
     /// <summary>
     /// Interaction logic for AnglePage.xaml
@@ -24,11 +14,23 @@ namespace Samples
     {
         KinectSensor _sensor;
         MultiSourceFrameReader _reader;
-        PlayersController _userReporter;
+        PlayersController _playersController;
 
-        JointType _start = JointType.ShoulderRight;
-        JointType _center = JointType.ElbowRight;
-        JointType _end = JointType.WristRight;
+        JointType _start1 = JointType.ShoulderRight;
+        JointType _center1 = JointType.ElbowRight;
+        JointType _end1 = JointType.WristRight;
+
+        JointType _start2 = JointType.ElbowLeft;
+        JointType _center2 = JointType.ShoulderLeft;
+        JointType _end2 = JointType.SpineShoulder;
+
+        JointType _start3 = JointType.AnkleRight;
+        JointType _center3 = JointType.KneeRight;
+        JointType _end3 = JointType.HipRight;
+
+        MqttClient _mqttClient;
+
+        int currentSeconds;
 
         public AnglePage()
         {
@@ -43,18 +45,23 @@ namespace Samples
                 _reader = _sensor.OpenMultiSourceFrameReader(FrameSourceTypes.Color | FrameSourceTypes.Depth | FrameSourceTypes.Infrared | FrameSourceTypes.Body);
                 _reader.MultiSourceFrameArrived += Reader_MultiSourceFrameArrived;
 
-                _userReporter = new PlayersController();
-                _userReporter.BodyEntered += UserReporter_BodyEntered;
-                _userReporter.BodyLeft += UserReporter_BodyLeft;
-                _userReporter.Start();
+                _playersController = new PlayersController();
+                _playersController.BodyEntered += UserReporter_BodyEntered;
+                _playersController.BodyLeft += UserReporter_BodyLeft;
+                _playersController.Start();
             }
+
+            _mqttClient = new MqttClient("192.168.86.37");
+            byte code = _mqttClient.Connect(System.Guid.NewGuid().ToString());
+
+            currentSeconds = System.DateTime.Now.Second;
         }
 
         private void Page_Unloaded(object sender, RoutedEventArgs e)
         {
-            if (_userReporter != null)
+            if (_playersController != null)
             {
-                _userReporter.Stop();
+                _playersController.Stop();
             }
 
             if (_reader != null)
@@ -99,31 +106,50 @@ namespace Samples
                 {
                     var bodies = frame.Bodies();
 
-                    _userReporter.Update(bodies);
+                    _playersController.Update(bodies);
 
                     Body body = bodies.Closest();
 
                     if (body != null)
                     {
                         viewer.DrawBody(body);
-                        angle.Update(body.Joints[_start], body.Joints[_center], body.Joints[_end], 100);
 
-                        tblAngle.Text = ((int)angle.Angle).ToString();
+                        angle1.Update(body.Joints[_start1], body.Joints[_center1], body.Joints[_end1], 50);
+                        angle2.Update(body.Joints[_start2], body.Joints[_center2], body.Joints[_end2], 50);
+                        angle3.Update(body.Joints[_start3], body.Joints[_center3], body.Joints[_end3], 50);
+
+                        if ((currentSeconds != System.DateTime.Now.Second) && ((int)angle1.Angle > 90) && ((int)angle1.Angle < 180))
+                        {
+                            //angle at elbow
+                            _mqttClient.Publish("angle_at_elbow", System.Text.Encoding.UTF8.GetBytes(((int)angle1.Angle).ToString()));
+
+                            _mqttClient.Publish("angles_2", System.Text.Encoding.UTF8.GetBytes(((int)angle2.Angle).ToString()));
+                            _mqttClient.Publish("angles_3", System.Text.Encoding.UTF8.GetBytes(((int)angle3.Angle).ToString()));
+                            currentSeconds = System.DateTime.Now.Second;
+                        }             
+
+                        tblAngle1.Text = ((int)angle1.Angle).ToString();
+                        tblAngle2.Text = ((int)angle2.Angle).ToString();
+                        tblAngle3.Text = ((int)angle3.Angle).ToString();
                     }
                 }
             }
         }
 
-        void UserReporter_BodyEntered(object sender, UsersControllerEventArgs e)
+        void UserReporter_BodyEntered(object sender, PlayersControllerEventArgs e)
         {
         }
 
-        void UserReporter_BodyLeft(object sender, UsersControllerEventArgs e)
+        void UserReporter_BodyLeft(object sender, PlayersControllerEventArgs e)
         {
             viewer.Clear();
-            angle.Clear();
+            angle1.Clear();
+            angle2.Clear();
+            angle3.Clear();
 
-            tblAngle.Text = "-";
+            tblAngle1.Text = "-";
+            tblAngle2.Text = "-";
+            tblAngle3.Text = "-";
         }
     }
 }
